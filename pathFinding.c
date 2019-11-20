@@ -28,7 +28,6 @@ typedef struct NodeList{
 } NodeList;
 
 NodeList * list_prepend(NodeList *old, Node *pNode);
-NodeList * list_append(NodeList *list, Node *pNode);
 NodeList * list_create (Node *pNode);
 NodeList * list_remove(NodeList *list, int index);
 NodeList * getNeighbours(Node grid[row][column], Node * pNode);
@@ -48,18 +47,6 @@ NodeList * list_create (Node *pNode)
    }
    return list;                        /* retour de la liste (correctement allouée et affectée ou NULL) */
  }
-
-NodeList * list_append(NodeList *list, Node *pNode)
-{/*Rajouter le previous*/
-    NodeList **plist = &list;
-    while (*plist)
-       plist = &(*plist)->next;
-    *plist = list_create(pNode);
-    if (*plist)
-       return list;
-    else
-       return NULL;
-}
 
 NodeList * list_remove(NodeList *list, int index)
 {
