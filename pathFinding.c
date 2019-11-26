@@ -21,65 +21,67 @@ typedef struct Node{
 	struct Node *parent;
 } Node;
 
-typedef struct NodeList{
+typedef struct Lister Lister;
+struct Lister{
 	Node * pNode;
-	struct NodeList * next;
-	struct NodeList * previous;
-} NodeList;
+	struct Lister* next;
+	struct Lister* prev;
+};
 
-NodeList * list_prepend(NodeList *old, Node *pNode);
-NodeList * list_create (Node *pNode);
-NodeList * list_remove(NodeList *list, int index);
-NodeList * getNeighbours(Node grid[row][column], Node * pNode);
-bool list_isIn(NodeList * pitem, NodeList * list);
+void push(Lister** head_ref, Node * new_data);
+void list_remove(struct Lister **list, struct Lister * del);
+Lister * getNeighbours(Node grid[row][column], Node * pNode);
+bool list_isIn(Lister * pitem, Lister * list);
 int getDistance(Node nodeA, Node nodeB);
 void findPath(Node grid[row][column], Node *startNode, Node *targetNode);
 
 
-NodeList * list_create (Node *pNode)
-{
-   NodeList *list = malloc(sizeof(NodeList)); /* allocation (en vert sur le diagramme) et affectation à la variable list (en bleu) */
-   if (list)                           /* si l'allocation a réussi */
-   {
-       list->pNode = pNode;              /* affectation du champ pNode (en rouge) */
-       list->next = NULL;  /* affectation du champ next à la liste vide */
-       list->previous = NULL;            /*Node parent dans la liste*/
-   }
-   return list;                        /* retour de la liste (correctement allouée et affectée ou NULL) */
- }
-
-NodeList * list_remove(NodeList *list, int index)
-{
-	NodeList **plist = &list;
-	for (int i = 0; i < index; ++i)
-	{
-		plist = &(*plist)->next;
-	}
-	if((*plist)->next)
-	((*plist)->next)->previous = (*plist)->previous;
-	if((*plist)->previous)
-	((*plist)->previous)->next = (*plist)->next;
-
-	free((*plist));
-
-	return list;
+void push(Lister** head_ref, Node* new_pNode) 
+{ 
+    /* allocate node */
+    Lister* new_element = (Lister*)malloc(sizeof(Lister)); 
+  
+    /* put in the data  */
+    new_element->pNode = new_pNode; 
+  
+    /* since we are adding at the beginning, 
+    prev is always NULL */
+    new_element->prev = NULL; 
+  
+    /* link the old list off the new node */
+    new_element->next = (*head_ref); 
+  
+    /* change prev of head node to new node */
+    if ((*head_ref) != NULL) 
+        (*head_ref)->prev = new_element; 
+  
+    /* move the head to point to the new node */
+    (*head_ref) = new_element; 
 }
 
-NodeList * list_prepend(NodeList *old, Node *pNode)
+void list_remove(Lister **head_ref, Lister * del)
 {
-
-    NodeList *list = list_create(pNode); /* création et affectation d'une liste d'un élément (en vert sur le diagramme) */
-    if (list){                     /* si l'allocation mémoire a réussi */
-       list->next = old;             /*     accrochage de l'ancienne liste à la nouvelle  (en bleu sur le diagramme) */
-       (*old).previous = list;
-    }
-    return list;                    /* retour de la nouvelle liste (ou NULL si l'allocation a échoué) */
+	/* base case */
+	if (*head_ref == NULL || del == NULL) 
+		return; 
+	/* If node to be deleted is head node */
+	if (*head_ref == del) 
+		*head_ref = del->next; 
+	/* Change next only if node to be deleted is NOT the last node */
+	if (del->next != NULL) 
+		del->next->prev = del->prev; 
+	/* Change prev only if node to be deleted is NOT the first node */
+	if (del->prev != NULL) 
+		del->prev->next = del->next; 
+	/* Finally, free the memory occupied by del*/
+	free(del); 
+	return; 
 }
 
-NodeList * getNeighbours(Node grid[row][column], Node * pNode)
+Lister * getNeighbours(Node grid[row][column], Node * pNode)
 {
 	int x, y;
-	NodeList * list = NULL;
+	Lister * list = NULL;
 	for(x = -1; x <= 1; x++){
 		for(y = -1; y <= 1; y++){
 			if(x == y || x == -y)
@@ -90,19 +92,19 @@ NodeList * getNeighbours(Node grid[row][column], Node * pNode)
 			int checkX = pNode->pos.x + x;
 			int checkY = pNode->pos.y + y;
 			if (checkX >= 0 && checkX < column && checkY >= 0 && checkY < row){
-				list = list_prepend(list, &(grid[checkY][checkX]));
+				push(&list, &(grid[checkY][checkX]));
 			}
 		}		
 	}
 	return list;
 }
 
-bool list_isIn(NodeList * pitem, NodeList * list)
+bool list_isIn(Lister * pitem, Lister * list)
 {
-	NodeList *tmp=list; /* opération en vert sur le diagramme */
+	Lister *tmp=list; /* opération en vert sur le diagramme */
 	while (tmp)
 	{
-	    if(tmp == pitem) return true;
+	    if(tmp->pNode == pitem->pNode) return true;
 	    tmp = tmp->next; /* opération en bleu sur le diagramme */
 	}
 	return false;
@@ -121,21 +123,20 @@ int getDistance(Node nodeA, Node nodeB)
 
 void findPath(Node grid[row][column], Node *startNode, Node *targetNode){
 	//Création openSet
-	NodeList *openSet = NULL;
-
-	//Création closeSet
-	NodeList *closeSet = NULL;
+	Lister *openSet = NULL;
 	
-	// définition des nodes elementaires (implicite)
+	Lister *closeSet = NULL;
 
-	openSet = list_prepend(openSet, startNode);
-	//On loop
-	while(openSet->pNode != NULL){
-		Node *currentNode = openSet->pNode;
+	push(&openSet, startNode);
 
-		//Recherche meilleur candidat, a ameliorer...
-		NodeList *candidat = openSet->next;
-		NodeList *tmp = openSet->next; // part de 1 jusqu'au dernier element (où next = NULL)
+	Node *currentNode = NULL;
+
+	while(openSet){
+		currentNode = openSet->pNode;
+
+		Lister * candidat = openSet;
+
+		Lister *tmp = openSet->next; // part de 1 jusqu'au dernier element (où next = NULL)
 		while (tmp)
 		{
     		if (tmp->pNode->fCost < currentNode->fCost ||(tmp->pNode->fCost == currentNode->fCost && tmp->pNode->hCost < currentNode->hCost)){
@@ -144,51 +145,43 @@ void findPath(Node grid[row][column], Node *startNode, Node *targetNode){
 			}
     		tmp = tmp->next;
 		}
-		//retirer currentNode de openSet grace a candidat
-		if((candidat)->next)
-		((candidat)->next)->previous = (candidat)->previous;
-		if((candidat)->previous)
-		((candidat)->previous)->next = (candidat)->next;
-		//openSet = list_remove(openSet, index, &openSetCount);
+		
+		list_remove(&openSet, candidat);
 
-		closeSet = list_prepend(closeSet, currentNode);
-
-		/*if (currentNode.pos.x == targetNode.pos.x && currentNode.pos.y == targetNode.pos.y){
-			return; // chemin trouvé
-		}*/
+		push(&closeSet, currentNode);
+		
 		if(currentNode == targetNode){
-			Node * node = currentNode;
-			while(currentNode != startNode){
-				node->wayToGo = true;
-				node = node->parent;
+			while (currentNode != NULL) {
+				currentNode->wayToGo = true;
+				currentNode = currentNode->parent; 
 			}
 			return;
 		}
 		
-		NodeList * neighbours = NULL;
-		neighbours = getNeighbours(grid, currentNode);
+		Lister * neighbours = getNeighbours(grid, currentNode);
 
-		NodeList *neighbour=neighbours;
-		while(neighbour)
-		{
-			if(list_isIn(neighbour, closeSet) || neighbour->pNode->walkable == false) {/*printf("in closedSet\n");*/ continue;}
+        Lister *neighbour=neighbours;    
+        while(neighbour)
+        {
+            if(list_isIn(neighbour, closeSet) || neighbour->pNode->walkable == false) {neighbour = neighbour->next; continue;}
 
-			int newCostToNeighbour = currentNode->gCost + getDistance(*currentNode, *(neighbour->pNode));
-			if (newCostToNeighbour < neighbour->pNode->gCost || list_isIn(neighbour, openSet) == false){
-				neighbour->pNode->gCost = newCostToNeighbour;
-				neighbour->pNode->hCost = getDistance(*(neighbour->pNode), *targetNode);
-				neighbour->pNode->fCost = neighbour->pNode->gCost + neighbour->pNode->hCost;
-				neighbour->pNode->parent = currentNode;
+            int newCostToNeighbour = currentNode->gCost + getDistance(*currentNode, *(neighbour->pNode));
+            if (newCostToNeighbour < neighbour->pNode->gCost || list_isIn(neighbour, openSet) == false){
+                neighbour->pNode->gCost = newCostToNeighbour;
+                neighbour->pNode->hCost = getDistance(*(neighbour->pNode), *targetNode);
+                neighbour->pNode->fCost = neighbour->pNode->gCost + neighbour->pNode->hCost;
+                neighbour->pNode->parent = currentNode;
 
-				if(list_isIn(neighbour, openSet) == false) openSet = list_prepend(openSet, neighbour->pNode);
-			}
-			neighbour = neighbour->next;
-		}
-		free(neighbours);
+                if(list_isIn(neighbour, openSet) == false) {push(&openSet, neighbour->pNode);}
+            }
+            neighbour = neighbour->next;
+        }
+        free(neighbours);
 	}
 
 	free(openSet);
 	free(closeSet);
+
 }
 
 
