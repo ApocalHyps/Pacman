@@ -14,7 +14,7 @@
 
 // ascii characters used for drawing levels
 extern const char PACMAN; // ascii used for pacman
-extern const char WALL; // ascii used for the walls
+extern const char WALL; // ascii used for the walkable_map
 extern const char PATH; // ascii used for the explored paths
 extern const char DOOR; // ascii used for the ghosts' door
 extern const char VIRGIN_PATH; // ascii used for the unexplored paths
@@ -51,11 +51,11 @@ typedef struct Node{
   bool superpacgomme;
 } Node;
 
-typedef struct Lister Lister;
-struct Lister { 
-  Node * data; 
-  struct Lister* next; 
-  struct Lister* prev; 
+typedef struct NodeList NodeList;
+struct NodeList { 
+  Node * pNode; 
+  struct NodeList* next; 
+  struct NodeList* prev; 
 }; 
 
 typedef struct fantome fantome;
@@ -68,10 +68,10 @@ struct fantome
 direction decision_maker(char ** map, Coord *pacman_pos, Coord grid_shape, bool energy, int remainingenergymoderounds, fantome fantomes[4]);
 void refresh_ghost_pos(char ** map, Coord grid_shape, fantome fantomes[4]);
 
-void push(Lister** head_ref, Node * new_data);
-void list_remove(struct Lister **list, struct Lister * del);
-Lister * getNeighbours(Node ** grid, Coord grid_shape, Node * data);
-bool list_isIn(Lister * pitem, Lister * list);
+void push(NodeList** head_ref, Node * new_pNode);
+void list_remove(struct NodeList **list, struct NodeList * del);
+NodeList * getNeighbours(Node ** grid, Coord grid_shape, Node * pNode);
+bool list_isIn(NodeList * pitem, NodeList * list);
 
 int getDistance(Node nodeA, Node nodeB, Coord grid_shape);
 int getDistanceFromClosestPacgomme(Node position, Node ** grid, Coord grid_shape);
@@ -83,8 +83,6 @@ void findPacmanPath(Node ** grid, Coord grid_shape, Node *startNode, bool ((*isT
 bool isPacgomme(Node * pNode);
 bool isSuperpacgomme(Node * pNode);
 
-// change the pacman function below to build your own player
-// your new pacman function can use as many additional functions/procedures as needed; put the code of these functions/procedures *AFTER* the pacman function
 direction pacman(
      char * * map, // the map as a dynamic array of strings, ie of arrays of chars
      int xsize, // number of columns of the map
@@ -95,12 +93,9 @@ direction pacman(
      bool energy, // is pacman in energy mode? 
      int remainingenergymoderounds // number of remaining rounds in energy mode, if energy mode is true
      ) {
-  // row = ysize;
-  // column = xsize;
-  // printf("%i, %i \n", row, column);
+
   direction d;
   Coord grid_shape = (Coord){xsize, ysize};
-  // guess a direction among the allowed four, until a valid choice is made
 
   //Création des instances des fantomes
   int k;
@@ -109,16 +104,12 @@ direction pacman(
   for(k = 0; k < 4; k++){
     fantomes[k].pos = c;
     fantomes[k].id = k+1;
-    
-    //printf("fantome %i, pos = %i, %i, forme : %c\n", fantomes[k].id, fantomes[k].pos.x, fantomes[k].pos.y, fantomes[k].forme);
   }
   refresh_ghost_pos(map, grid_shape, fantomes);
   
   Coord pacman_pos = {x, y};
 
   d = decision_maker(map, &pacman_pos, grid_shape, energy, remainingenergymoderounds, fantomes);
-  
-  //printf("d = %i\n", d);
   // answer to the game engine 
   return d;
 }
@@ -134,7 +125,6 @@ void refresh_ghost_pos(char ** map, Coord grid_shape, fantome fantomes[4]){
   for(i = 0; i < grid_shape.y; i++){
     for(j = 0; j < grid_shape.x; j++){
       test = map[i][j];
-      //printf("%c\n", map[i][j+1]);
       if(test == GHOST1){fantomes[0].pos = (Coord){j, i};}
       if(test == GHOST2){fantomes[1].pos = (Coord){j, i};}
       if(test == GHOST3){fantomes[2].pos = (Coord){j, i};}
@@ -149,23 +139,19 @@ bool isSuperpacgomme(Node * pNode){return pNode->superpacgomme;}
 
 direction decision_maker(char ** map, Coord *pacman_pos, Coord grid_shape, bool energy, int remainingenergymoderounds, fantome fantomes[4])/*Fonction d'évaluation du meilleur coup a faire*/{
   /*
-  actualiser la position des fantomes - check
-  convertir la carte en node (walkable or not) - check
+  Actualiser la position des fantomes
+  Convertir la carte en node (walkable or not)
   Pour les 4 fantomes :
-    Chercher le chemin vers pacman - check
-    au passage des nodes vers pacman adapter le ghostCost en fonction de la profondeur, de manière exponentielle (genre a trois case c'est ok. mais a 1 case c'est pas acceptable) - check
+    Chercher le chemin vers pacman
+    Au passage des nodes vers pacman adapter le ghostCost en fonction de la profondeur, de manière exponentielle
   Pour pacman:
     Effectuer un pathfinding multitarget en prenant compte du coup modifier des case avec les fantomes
-    trouver donc le meilleur chemin vers un point en evitant les fantomes
-  renvoyer donc la première direction necessaire pour y arriver
-  recommencer a chaque étape pour actualiser le chemin a prendre en fction des déplacement des fantomes.
-
+    Trouver donc le meilleur chemin vers un point en evitant les fantomes
+    Ou si energy mode et qu'il reste queslques round chercher se diriger vers les fantomes
+  Renvoyer donc la direction necessaire pour y arriver
   */
   int i;
-
-  refresh_ghost_pos(map, grid_shape, fantomes);
-  //printf("after first refresh ghost\n");
-  bool walls[grid_shape.y][grid_shape.x]; // false if there is a wall
+  bool walkable_map[grid_shape.y][grid_shape.x]; // false if there is a wall
 
   //initialisation des murs
   int x, y;
@@ -173,18 +159,16 @@ direction decision_maker(char ** map, Coord *pacman_pos, Coord grid_shape, bool 
     for(y = 0; y<grid_shape.y; y++){
       if(map[y][x] == WALL){
         //printf("wall pos : %i, %i\n", x, y);
-        walls[y][x] = false;
+        walkable_map[y][x] = false;
       }else{
-        walls[y][x] = true;
+        walkable_map[y][x] = true;
       }
     }
   }
 
   //Création du tableau des nodes
-  //printf("Préallocation touched\n");
   Node ** grid = NULL;
   grid = malloc(grid_shape.y*sizeof(Node *));
-  //printf("First allocation Done\n");
   if(!grid){printf("Can't correctly allocate memory."); exit(0);}
   for (int i = 0; i < grid_shape.y; ++i)
   {
@@ -192,91 +176,69 @@ direction decision_maker(char ** map, Coord *pacman_pos, Coord grid_shape, bool 
     grid[i] = malloc(grid_shape.x*sizeof(Node));
     if(!grid[i]){printf("Can't correctly allocate memory."); exit(0);}
   }
-  //int dstXsup = 2*abs(goal.x-start.x);
-  //int dstYsup = 2*abs(goal.y-start.y);
 
   bool stillpacgomme = false;
   bool stillsuperpacgomme = false;
 
   for(x = 0; x<grid_shape.x; x++){
     for(y = 0; y<grid_shape.y; y++){
-      grid[y][x] = (Node){walls[y][x], false, (Coord){x, y}, 0, 0, 0, 0, NULL, false, false};
+      grid[y][x] = (Node){walkable_map[y][x], false, (Coord){x, y}, 0, 0, 0, 0, NULL, false, false};
       if(map[y][x] == VIRGIN_PATH) {
         grid[y][x].pacgomme = true;
         stillpacgomme = true;
-      }
-      if(map[y][x] == ENERGY){
+      }else if(map[y][x] == ENERGY){
         grid[y][x].superpacgomme = true;
         stillsuperpacgomme = true;
       }
     }
   }
 
-  Node * pacman_data = &(grid[pacman_pos->y][pacman_pos->x]);
-  Node * currentGhost_data = NULL;
+  Node * pacman_pNode = &(grid[pacman_pos->y][pacman_pos->x]);
+  Node * currentGhost_pNode = NULL;
   Node * tmp = NULL;
   int count;
-  int lenght;
   for (i = 0; i < 4; ++i)
   {
     if(fantomes[i].pos.y == -1 && fantomes[i].pos.x == -1) continue; // Le fantome est mort pour ce tour
-    currentGhost_data = &(grid[fantomes[i].pos.y][fantomes[i].pos.x]);
+    currentGhost_pNode = &(grid[fantomes[i].pos.y][fantomes[i].pos.x]);
     // find path to pacman
-    findPath(grid, grid_shape, currentGhost_data, pacman_data);
+    findPath(grid, grid_shape, currentGhost_pNode, pacman_pNode);
 
+    // Décommenter la suite pour faire apparaitre en debug les chemin calculé par les fantomes
 
-    //checking if it is found
-    //test a supprimer
-
-  //   for(y = 0; y < grid_shape.y; y++){
-  //   for(x = 0; x < grid_shape.x; x++){
-  //     if(grid[y][x].pos.x == currentGhost_data->pos.x && grid[y][x].pos.y == currentGhost_data->pos.y){
-  //       printf("è");
-  //     }else if(grid[y][x].pos.x == pacman_data->pos.x && grid[y][x].pos.y == pacman_data->pos.y){
-  //       printf("@");  
-  //     }else if(grid[y][x].pacgomme){
-  //       printf(":");
-  //     }else if(grid[y][x].wayToGo){
-  //       printf("°");        
-  //     }else if(grid[y][x].walkable){
-  //       printf(".");  
-  //     }else{
-  //       printf("#");
-  //     } 
-  //   }
-  //   printf("\n");   
-  // }
-
-    if(pacman_data->parent == NULL){
-
-      for(x = 0; x<grid_shape.x; x++){
-      for(y = 0; y<grid_shape.y; y++){
-        grid[y][x].fCost = 0;
-        grid[y][x].hCost = 0;
-        grid[y][x].gCost = 0;
-        grid[y][x].wayToGo = false;
-        grid[y][x].parent = NULL;
-      }
-    } 
-      continue;
-    }
-      //printf("Hey\n");
+    //   for(y = 0; y < grid_shape.y; y++){
+    //   for(x = 0; x < grid_shape.x; x++){
+    //     if(grid[y][x].pos.x == currentGhost_pNode->pos.x && grid[y][x].pos.y == currentGhost_pNode->pos.y){
+    //       printf("è");
+    //     }else if(grid[y][x].pos.x == pacman_pNode->pos.x && grid[y][x].pos.y == pacman_pNode->pos.y){
+    //       printf("@");  
+    //     }else if(grid[y][x].pacgomme){
+    //       printf(":");
+    //     }else if(grid[y][x].wayToGo){
+    //       printf("°");        
+    //     }else if(grid[y][x].walkable){
+    //       printf(".");  
+    //     }else{
+    //       printf("#");
+    //     } 
+    //   }
+    //   printf("\n");   
+    // }
 
     // Updating ghostCost des nodes sur le chemin
     //first getting the lenght of the path
     count = 0;
-    tmp = pacman_data;
+    tmp = pacman_pNode;
     while(tmp){
       count++;
       tmp = tmp->parent;
     }
-    lenght = count;
     // updating ghostCost
-    tmp = pacman_data;
+    tmp = pacman_pNode;
     while(tmp){
       //tmp->ghostCost += floor(10000*exp(count-lenght-3)); // coefficient a ajuster
-      if(energy){
-        tmp->ghostCost -= floor(10000/pow(lenght, 2)) * remainingenergymoderounds;
+      if(energy && remainingenergymoderounds > 10){
+        tmp->ghostCost -= floor(1000/pow(count, 2));
       }else {
         tmp->ghostCost += floor(1000/pow(count, 2));
       }
@@ -294,161 +256,134 @@ direction decision_maker(char ** map, Coord *pacman_pos, Coord grid_shape, bool 
         grid[y][x].gCost = 0;
         grid[y][x].wayToGo = false;
         grid[y][x].parent = NULL;
-        if(map[y][x] == DOOR && i == 3) grid[y][x].walkable = false; // pour pacman maintenant il ne peut pas traverser la DOOR
       }
     } 
   }
-  
-// for(x = 0; x<column; x++){
-//     for(y = 0; y<row; y++){
-//       printf("%p ; %s walkable : %p Coord : %i, %i, fcost = %i, pacgomme = %s, ghostcost = %i\n", &(grid[y][x]), grid[y][x].walkable ? "y" : "n", grid[y][x].parent, grid[y][x].pos.y, grid[y][x].pos.x, grid[y][x].fCost, grid[y][x].pacgomme?"o":"n" , grid[y][x].ghostCost);
-//     }
-//     printf("\n");
-//   }
 
-
-Coord nextpos;
-bool ((*isTarget)(Node *));
-int ((*distanceTo)(Node, Node**, Coord));
-if(stillpacgomme){
-  isTarget = isPacgomme;
-  distanceTo = getDistanceFromClosestPacgomme;
-}else if(stillsuperpacgomme){
-  isTarget = isSuperpacgomme;
-  distanceTo = getDistanceFromClosestSuperpacgomme;
-}
-
-if(stillpacgomme || stillsuperpacgomme){
-  findPacmanPath(grid, grid_shape, pacman_data, isTarget, distanceTo);
-  //printf("323\n");
-  Lister *neighbours = getNeighbours(grid, grid_shape, pacman_data);
-  Lister *temp2 = neighbours;
-  while(temp2){
-    if(temp2->data->wayToGo){
-      nextpos = temp2->data->pos;
-      break;
+  for(x = 0; x<grid_shape.x; x++){
+    for(y = 0; y<grid_shape.y; y++){
+      if(map[y][x] == DOOR) grid[y][x].walkable = false; // pour pacman maintenant il ne peut pas traverser la DOOR
     }
-    temp2 = temp2->next;
+  } 
+
+  Coord nextpos;
+  bool ((*isTarget)(Node *));
+  int ((*distanceTo)(Node, Node**, Coord));
+  if(stillpacgomme){
+    isTarget = isPacgomme;
+    distanceTo = getDistanceFromClosestPacgomme;
+  }else if(stillsuperpacgomme){
+    isTarget = isSuperpacgomme;
+    distanceTo = getDistanceFromClosestSuperpacgomme;
   }
-}else{
-  // on regarde quelle node autour de pacman a le plus petit ghostCost pour finir ou si une pacgomme est caché pour temporiser
-  //printf("335\n");
-  Lister *neighbours = getNeighbours(grid, grid_shape, pacman_data);
-  Lister *temp2 = neighbours;
-  // while(temp2){
-  //   printf("%p : x = %i, y = %i\n", temp2->data, temp2->data->pos.x, temp2->data->pos.y);
-  //   temp2 = temp2->next;
-  // }
-  int score = 0;
-  while(temp2){
-    score = max(score, temp2->data->ghostCost);
-    temp2 = temp2->next;
-    //printf("score : %i\n", score);
-  }
-  //printf("final score : %i\n", score);
-  //we now got score at least the minimal around
-  while(neighbours){
-    //printf("ghost cost of neighbour : %i \n", neighbours->data->ghostCost);
-    //printf("%p : x = %i, y = %i, ghostcost = %i \n", neighbours->data, neighbours->data->pos.x, neighbours->data->pos.y, neighbours->data->ghostCost);
-    if(neighbours->data->ghostCost <= score && neighbours->data->walkable){
-      nextpos = neighbours->data->pos;
-      //printf("new selection : iswalkable : %s\n", neighbours->data->walkable?"yes":"no");
-      score = neighbours->data->ghostCost;
+
+  NodeList *neighbours = getNeighbours(grid, grid_shape, pacman_pNode);
+  NodeList *temp2 = neighbours;
+
+  if((stillpacgomme || stillsuperpacgomme) && ((!energy) || (energy && remainingenergymoderounds < 10))){
+    findPacmanPath(grid, grid_shape, pacman_pNode, isTarget, distanceTo);
+    //printf("323\n");
+    
+    while(temp2){ 
+      if(temp2->pNode->wayToGo){
+        nextpos = temp2->pNode->pos;
+        break;
+      }
+      temp2 = temp2->next;
     }
-    neighbours = neighbours->next;
+  }else{
+    // on regarde quelle node autour de pacman a le plus petit ghostCost pour finir ou si une pacgomme est caché pour temporiser
+    int score = 0;
+    while(temp2){
+      score = max(score, temp2->pNode->ghostCost);
+      temp2 = temp2->next;
+    }
+    //we now got score at least the minimal around
+    while(neighbours){
+      if(neighbours->pNode->ghostCost <= score && neighbours->pNode->walkable){
+        nextpos = neighbours->pNode->pos;
+        score = neighbours->pNode->ghostCost;
+      }
+      neighbours = neighbours->next;
+    }
   }
-}
 
+  // Décommenter la suite pour faire apparaitre en debug les chemin calculé pour pacman
 
-// for(y = 0; y < grid_shape.y; y++){
-//     for(x = 0; x < grid_shape.x; x++){
-//       if(grid[y][x].pos.x == pacman_data->pos.x && grid[y][x].pos.y == pacman_data->pos.y){
-//         printf("@");  
-//       }else if(grid[y][x].wayToGo){
-//         printf("°");        
-//       }else if(grid[y][x].pacgomme){
-//         printf(":");
-//       }else if(grid[y][x].walkable){
-//         printf(".");  
-//       }else{
-//         printf("#");
-//       } 
-//     }
-//     printf("\n"); 
-//   }
-
+  // for(y = 0; y < grid_shape.y; y++){
+  //     for(x = 0; x < grid_shape.x; x++){
+  //       if(grid[y][x].pos.x == pacman_pNode->pos.x && grid[y][x].pos.y == pacman_pNode->pos.y){
+  //         printf("@");  
+  //       }else if(grid[y][x].wayToGo){
+  //         printf("°");        
+  //       }else if(grid[y][x].pacgomme){
+  //         printf(":");
+  //       }else if(grid[y][x].walkable){
+  //         printf(".");  
+  //       }else{
+  //         printf("#");
+  //       } 
+  //     }
+  //     printf("\n"); 
+  //   }
   
-/*
-  // pour le moment pour test on va simplement faire en sorte que pacman échappe aux fantomes donc pas encore de path finding
-  
-  printf("score : %i\n", score);
   //now looking for the direction to head for based on the nextpos
-  */
-
-  /*
-  #-------------------> x
-  |
-  |
-  |   Modèle utilisé
-  |
-  |
-  |
-  |
-  \/
-  y
-
-  */
+    /*
+    #-------------------> x
+    |
+    |
+    |   Modèle utilisé
+    |
+    |
+    |
+    |
+    \/
+    y
+  
+    */
 
   direction d;
-  //printf("pacman pos : %i, %i\n", pacman_pos->x, pacman_pos->y);
-  //printf("next pos evaluated : %i, %i\n", nextpos.x, nextpos.y);
 
   if(nextpos.x == pacman_pos->x - 1) d = WEST;//North
   if(nextpos.x == pacman_pos->x + 1) d = EAST;//South
   if(nextpos.y == pacman_pos->y - 1) d = NORTH;//West
   if(nextpos.y == pacman_pos->y + 1) d = SOUTH;//East
 
-  // if((nextpos.y == pacman_pos->y) && nextpos.x != (pacman_pos->x + 1) && nextpos.x != (pacman_pos->x - 1)) d = WEST;//North
-  // if((nextpos.y == pacman_pos->y) && nextpos.x != (pacman_pos->x - 1)) d = EAST;//South
-  // if((nextpos.x == pacman_pos->x) && nextpos.y != (pacman_pos->y + 1) && nextpos.y == (pacman_pos->y - 1)) d = NORTH;//West
-  // if((nextpos.x == pacman_pos->x) && nextpos.y != (pacman_pos->y - 1)) d = SOUTH;//East
-
-  //printf(" final d = %i\n", d);
   if (pacman_pos->x == 0 && nextpos.x == grid_shape.x-1) return WEST;
   if (pacman_pos->x == grid_shape.x-1 && nextpos.x == 0) return EAST;
   if (pacman_pos->y == 0 && nextpos.y == grid_shape.y-1) return NORTH;
   if (pacman_pos->y == grid_shape.y-1 && nextpos.y == 0) return SOUTH;
-  return d; //0,1,2,3
+  return d;
 }
 
 //next code is for the pathFinding algorithm
 
 // Gestion des listes
 
-void push(Lister** head_ref, Node* new_data) 
+void push(NodeList** head_ref, Node* new_pNode) 
 { 
-    /* allocate node */
-    Lister* new_element = (Lister*)malloc(sizeof(Lister)); 
-  
-    /* put in the data  */
-    new_element->data = new_data; 
-  
-    /* since we are adding at the beginning, 
-    prev is always NULL */
-    new_element->prev = NULL; 
-  
-    /* link the old list off the new node */
-    new_element->next = (*head_ref); 
-  
-    /* change prev of head node to new node */
-    if ((*head_ref) != NULL) 
-        (*head_ref)->prev = new_element; 
-  
-    /* move the head to point to the new node */
-    (*head_ref) = new_element; 
+  /* allocate node */
+  NodeList* new_element = (NodeList*)malloc(sizeof(NodeList)); 
+
+  /* put in the pNode  */
+  new_element->pNode = new_pNode; 
+
+  /* since we are adding at the beginning, 
+  prev is always NULL */
+  new_element->prev = NULL; 
+
+  /* link the old list off the new node */
+  new_element->next = (*head_ref); 
+
+  /* change prev of head node to new node */
+  if ((*head_ref) != NULL) 
+      (*head_ref)->prev = new_element; 
+
+  /* move the head to point to the new node */
+  (*head_ref) = new_element; 
 }
 
-void list_remove(Lister **head_ref, Lister * del)
+void list_remove(NodeList **head_ref, NodeList * del)
 {
   /* base case */
   if (*head_ref == NULL || del == NULL) 
@@ -469,12 +404,12 @@ void list_remove(Lister **head_ref, Lister * del)
 
 //lecture sur les listes
 
-bool list_isIn(Lister * pitem, Lister * list)
+bool list_isIn(NodeList * pitem, NodeList * list)
 {
-  Lister *tmp=list; /* opération en vert sur le diagramme */
+  NodeList *tmp=list; /* opération en vert sur le diagramme */
   while (tmp)
   {
-      if(tmp->data == pitem->data) return true;
+      if(tmp->pNode == pitem->pNode) return true;
       tmp = tmp->next; /* opération en bleu sur le diagramme */
   }
   return false;
@@ -482,12 +417,12 @@ bool list_isIn(Lister * pitem, Lister * list)
 
 //recherche des case voisines (exclus les case hors de la carte, pas très necessaire pour pacman grace aux murs exterieurs mais bon ...)
 
-Lister * getNeighbours(Node ** grid, Coord grid_shape, Node * pNode)
+NodeList * getNeighbours(Node ** grid, Coord grid_shape, Node * pNode)
 {
   int row = grid_shape.y;
   int column = grid_shape.x;
   int x, y;
-  Lister * list = NULL;
+  NodeList * list = NULL;
   for(x = -1; x <= 1; x++){
     for(y = -1; y <= 1; y++){
       if(x == y || x == -y)
@@ -496,27 +431,24 @@ Lister * getNeighbours(Node ** grid, Coord grid_shape, Node * pNode)
       //le voisin est-il sur la carte (Rappel pour pacman: a modifier car la topologie est torique)
       int checkX = pNode->pos.x + x;
       int checkY = pNode->pos.y + y;
-          if(checkX < 0) checkX += column;
-          if(checkX > column-1) checkX -= column;
-          if(checkY < 0) checkY += row;
-          if(checkY > row-1) checkY -= row;
-          if (checkX >= 0 && checkX < column && checkY >= 0 && checkY < row){ // garde le test au cas où pour le moment
-            //printf("Hey %i, %i pushing : %p\n", checkX, checkY, &(grid[checkY][checkX]));
-            push(&list, &(grid[checkY][checkX]));
-          }
+      if(checkX < 0) checkX += column;
+      if(checkX > column-1) checkX -= column;
+      if(checkY < 0) checkY += row;
+      if(checkY > row-1) checkY -= row;
+      push(&list, &(grid[checkY][checkX]));
     }   
   }
   return list;
 }
 
+ // Distance  pour exspace a topologie torique
 int getDistance(Node nodeA, Node nodeB, Coord grid_shape)
-{/* A modifier pour pacman avec sa topologie*/
+{
   int row = grid_shape.y;
   int column = grid_shape.x;
   int dstX = abs(nodeB.pos.x-nodeA.pos.x);
   int dstY = abs(nodeB.pos.y-nodeA.pos.y);
   int dist = min(min(dstX+dstY, row-dstX + dstY), min(dstX + column-dstY, row+column - dstX-dstY));
-  //int dst = dstX+dstY; // Si il n'y a pas de déplacement diagonal
   return dist;
 }
 
@@ -529,11 +461,10 @@ int getDistanceFromClosestSuperpacgomme(Node position, Node ** grid, Coord grid_
   for(x = 0; x < column; x++){
     for(y = 0; y < row; y++){
       if(grid[y][x].superpacgomme == false) continue;
-      newdistance = getDistance(grid[y][x], position, grid_shape)/* * (grid[y][x].ghostCost+1)*/; // Altération du cout si un fantomes ferai bien de pacer par là
+      newdistance = getDistance(grid[y][x], position, grid_shape); // Altération du cout si un fantomes ferai bien de pacer par là
       if(newdistance <= distance) distance = newdistance;
     }
   }
-  //printf("distance returned = %i", distance);
   return distance;
 }
 
@@ -547,11 +478,10 @@ int getDistanceFromClosestPacgomme(Node position, Node ** grid, Coord grid_shape
   for(x = 0; x < column; x++){
     for(y = 0; y < row; y++){
       if(grid[y][x].pacgomme == false) continue;
-      newdistance = getDistance(grid[y][x], position, grid_shape)/* * (grid[y][x].ghostCost+1)*/; // Altération du cout si un fantomes ferai bien de pacer par là
+      newdistance = getDistance(grid[y][x], position, grid_shape); // Altération du cout si un fantomes ferai bien de pacer par là
       if(newdistance <= distance) distance = newdistance;
     }
   }
-  //printf("distance returned = %i", distance);
   return distance;
 }
 
@@ -560,24 +490,24 @@ int getDistanceFromClosestPacgomme(Node position, Node ** grid, Coord grid_shape
 
 void findPath(Node ** grid, Coord grid_shape, Node *startNode, Node *targetNode){
   //Création openSet
-  Lister *openSet = NULL;
+  NodeList *openSet = NULL;
   
-  Lister *closeSet = NULL;
+  NodeList *closeSet = NULL;
 
   push(&openSet, startNode);
 
   Node *currentNode = NULL;
 
   while(openSet){
-    currentNode = openSet->data;
+    currentNode = openSet->pNode;
 
-    Lister * candidat = openSet;
+    NodeList * candidat = openSet;
 
-    Lister *tmp = openSet->next; // part de 1 jusqu'au dernier element (où next = NULL)
+    NodeList *tmp = openSet->next; // part de 1 jusqu'au dernier element (où next = NULL)
     while (tmp)
     {
-        if (tmp->data->fCost < currentNode->fCost ||(tmp->data->fCost == currentNode->fCost && tmp->data->hCost < currentNode->hCost)){
-        currentNode = tmp->data;
+      if (tmp->pNode->fCost < currentNode->fCost ||(tmp->pNode->fCost == currentNode->fCost && tmp->pNode->hCost < currentNode->hCost)){
+        currentNode = tmp->pNode;
         candidat = tmp;
       }
         tmp = tmp->next;
@@ -590,34 +520,33 @@ void findPath(Node ** grid, Coord grid_shape, Node *startNode, Node *targetNode)
     if(currentNode == targetNode){
       free(openSet);
       free(closeSet);
-      //temporaire
+
       while(currentNode){
         currentNode->wayToGo = true;
         currentNode = currentNode->parent;
       }
-      return; // retrace to do outside
+      return;
     }
     
-    Lister * neighbours = getNeighbours(grid, grid_shape, currentNode);
+    NodeList * neighbours = getNeighbours(grid, grid_shape, currentNode);
 
-        Lister *neighbour=neighbours;    
-        while(neighbour)
-        {
-            if(list_isIn(neighbour, closeSet) || neighbour->data->walkable == false) {neighbour = neighbour->next; continue;}
+    NodeList *neighbour=neighbours;    
+    while(neighbour)
+    {
+      if(list_isIn(neighbour, closeSet) || neighbour->pNode->walkable == false) {neighbour = neighbour->next; continue;}
 
-            int newCostToNeighbour = currentNode->gCost + 1;
-            //int newCostToNeighbour = currentNode->gCost + getDistance(*currentNode, *(neighbour->data));
-            if (newCostToNeighbour < neighbour->data->gCost || list_isIn(neighbour, openSet) == false){
-                neighbour->data->gCost = newCostToNeighbour;
-                neighbour->data->hCost = getDistance(*(neighbour->data), *targetNode, grid_shape);
-                neighbour->data->fCost = neighbour->data->gCost + neighbour->data->hCost;
-                neighbour->data->parent = currentNode;
+      int newCostToNeighbour = currentNode->gCost + 1;
+      if (newCostToNeighbour < neighbour->pNode->gCost || list_isIn(neighbour, openSet) == false){
+        neighbour->pNode->gCost = newCostToNeighbour;
+        neighbour->pNode->hCost = getDistance(*(neighbour->pNode), *targetNode, grid_shape);
+        neighbour->pNode->fCost = neighbour->pNode->gCost + neighbour->pNode->hCost;
+        neighbour->pNode->parent = currentNode;
 
-                if(list_isIn(neighbour, openSet) == false) {push(&openSet, neighbour->data);}
-            }
-            neighbour = neighbour->next;
-        }
-        free(neighbours);
+        if(list_isIn(neighbour, openSet) == false) {push(&openSet, neighbour->pNode);}
+      }
+      neighbour = neighbour->next;
+    }
+    free(neighbours);
   }
   printf("Didn't find a path\n");
   free(openSet);
@@ -625,68 +554,62 @@ void findPath(Node ** grid, Coord grid_shape, Node *startNode, Node *targetNode)
 
 }
 
-void findPacmanPath(Node ** grid, Coord grid_shape, Node *startNode, bool ((*isTarget)(Node *)), int ((*distanceTo)(Node, Node** , Coord))){/* Copie identique du findPath mais avec un paramètre de recherhe différent*/
+void findPacmanPath(Node ** grid, Coord grid_shape, Node *startNode, bool ((*isTarget)(Node *)), int ((*distanceTo)(Node, Node** , Coord))){
   //Création openSet
-  Lister *openSet = NULL;
+  NodeList *openSet = NULL;
   
-  Lister *closeSet = NULL;
+  NodeList *closeSet = NULL;
 
   push(&openSet, startNode);
 
   Node *currentNode = NULL;
 
   while(openSet){
-    currentNode = openSet->data;
+    currentNode = openSet->pNode;
 
-    Lister * candidat = openSet;
+    NodeList * candidat = openSet;
 
-    Lister *tmp = openSet->next; // part de 1 jusqu'au dernier element (où next = NULL)
-    while (tmp)
-    {
-        if (tmp->data->fCost < currentNode->fCost ||(tmp->data->fCost == currentNode->fCost && tmp->data->hCost < currentNode->hCost)){
-        currentNode = tmp->data;
+    NodeList *tmp = openSet->next; // part de 1 jusqu'au dernier element (où next = NULL)
+    while (tmp){
+      if (tmp->pNode->fCost < currentNode->fCost ||(tmp->pNode->fCost == currentNode->fCost && tmp->pNode->hCost < currentNode->hCost)){
+        currentNode = tmp->pNode;
         candidat = tmp;
       }
-        tmp = tmp->next;
+      tmp = tmp->next;
     }
 
-    //printf("currentNode : %p\n", currentNode);
-    //printf("currentNode pacgomme present %s : %p\n", currentNode->pacgomme?"Yes":"Non", currentNode);
     list_remove(&openSet, candidat);
 
     push(&closeSet, currentNode);
     
-    if((*isTarget)(currentNode)){/* mettre une condition avec le ghostCost pour ajouter de la temporisation*/
+    if((*isTarget)(currentNode)){
       free(openSet);
       free(closeSet);
-      //temporaire
       while(currentNode){
         currentNode->wayToGo = true;
         currentNode = currentNode->parent;
       }
-      return; // retrace to do outside
+      return;
     }
     
-    Lister * neighbours = getNeighbours(grid, grid_shape, currentNode);
+    NodeList * neighbours = getNeighbours(grid, grid_shape, currentNode);
 
-        Lister *neighbour=neighbours;    
-        while(neighbour)
-        {
-            if(list_isIn(neighbour, closeSet) || neighbour->data->walkable == false) {neighbour = neighbour->next; continue;}
+    NodeList *neighbour=neighbours;    
+    while(neighbour){
+      if(list_isIn(neighbour, closeSet) || neighbour->pNode->walkable == false) {neighbour = neighbour->next; continue;}
 
-            int newCostToNeighbour = currentNode->gCost + 1;
-            //int newCostToNeighbour = currentNode->gCost + getDistance(*currentNode, *(neighbour->data));
-            if (newCostToNeighbour < neighbour->data->gCost || list_isIn(neighbour, openSet) == false){
-                neighbour->data->gCost = newCostToNeighbour;
-                neighbour->data->hCost = (*distanceTo)(*(neighbour->data), grid, grid_shape);
-                neighbour->data->fCost = neighbour->data->gCost + neighbour->data->hCost + neighbour->data->ghostCost;
-                neighbour->data->parent = currentNode;
+      int newCostToNeighbour = currentNode->gCost + 1;
+      if (newCostToNeighbour < neighbour->pNode->gCost || list_isIn(neighbour, openSet) == false){
+        neighbour->pNode->gCost = newCostToNeighbour;
+        neighbour->pNode->hCost = (*distanceTo)(*(neighbour->pNode), grid, grid_shape);
+        neighbour->pNode->fCost = neighbour->pNode->gCost + neighbour->pNode->hCost + neighbour->pNode->ghostCost;
+        neighbour->pNode->parent = currentNode;
 
-                if(list_isIn(neighbour, openSet) == false) {push(&openSet, neighbour->data);}
-            }
-            neighbour = neighbour->next;
-        }
-        free(neighbours);
+        if(list_isIn(neighbour, openSet) == false) {push(&openSet, neighbour->pNode);}
+      }
+      neighbour = neighbour->next;
+    }
+    free(neighbours);
   }
   printf("Didn't find a path\n");
   free(openSet);
